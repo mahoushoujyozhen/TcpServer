@@ -1,6 +1,7 @@
 package znet
 
 import (
+	"TcpServer/utils"
 	"TcpServer/ziface"
 	"errors"
 	"fmt"
@@ -38,7 +39,10 @@ func CallBackToClient(conn *net.TCPConn, data []byte, cnt int) error {
 // 开启网络服务
 func (s *Server) Start() {
 	fmt.Printf("[START] Server listenner at IP: %s, Port %d, is starting\n", s.IP, s.Port)
-
+	fmt.Printf("[Zinx] Version: %s, MaxConn: %d,  MaxPacketSize: %d\n",
+		utils.GlobalObject.Version,
+		utils.GlobalObject.MaxConn,
+		utils.GlobalObject.MaxPacketSize)
 	//开启一个go去做服务端Linster业务
 	go func() {
 		//1 获取一个TCP的Addr
@@ -99,12 +103,14 @@ func (s *Server) Serve() {
 }
 
 // 创建一个服务器句柄，服务器句柄用来控制一个服务的连接，断开，就是一个服务的管理器
-func NewServer(name string) ziface.IServer {
+func NewServer() ziface.IServer {
+	utils.GlobalObject.Reload()
+	//先初始化全局配置文件
 	s := &Server{
-		Name:      name,
+		Name:      utils.GlobalObject.Name,
 		IPVersion: "tcp4",
-		IP:        "0.0.0.0",
-		Port:      7777,
+		IP:        utils.GlobalObject.Host,
+		Port:      utils.GlobalObject.TcpPort,
 		Router:    nil,
 	}
 	return s
