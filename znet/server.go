@@ -2,6 +2,7 @@ package znet
 
 import (
 	"TcpServer/ziface"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -19,33 +20,50 @@ type Server struct {
 	Port int
 }
 
+// ============== 定义当前客户端链接的handle api ===========
+func CallBackToClient(conn *net.TCPConn, data []byte, cnt int) error {
+	//回显业务
+	fmt.Println("[Conn Handle] CallBackToClient ... ")
+	if _, err := conn.Write(data[:cnt]); err != nil {
+		fmt.Println("write back buf err ", err)
+		return errors.New("CallBackToClient error")
+	}
+	return nil
+}
+
 //  =================实现ziface.IServer所有的接口=================
 
 // 开启网络服务
 func (s *Server) Start() {
 	fmt.Printf("[START] Server listenner at IP: %s, Port %d, is starting\n", s.IP, s.Port)
 
-	// 开一个goroutine去做服务端的Listener业务
+	//开启一个go去做服务端Linster业务
 	go func() {
-		// 1、获取一个TCP的Addr
+		//1 获取一个TCP的Addr
 		addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
 		if err != nil {
 			fmt.Println("resolve tcp addr err: ", err)
 			return
 		}
+
 		//2 监听服务器地址
-		listener, err := net.ListenTCP(s.IPVersion, addr)
+		listenner, err := net.ListenTCP(s.IPVersion, addr)
 		if err != nil {
 			fmt.Println("listen", s.IPVersion, "err", err)
 			return
 		}
-		// 已经监听成功了
+
+		//已经监听成功
 		fmt.Println("start Zinx server  ", s.Name, " succ, now listenning...")
 
-		// 3、启动server网络连接业务
+		//TODO server.go 应该有一个自动生成ID的方法
+		var cid uint32
+		cid = 0
+
+		//3 启动server网络连接业务
 		for {
-			// 3.1 阻塞等待客户端连接
-			conn, err := listener.AcceptTCP()
+			//3.1 阻塞等待客户端建立连接请求
+			conn, err := listenner.AcceptTCP()
 			if err != nil {
 				fmt.Println("Accept err ", err)
 				continue
@@ -53,25 +71,12 @@ func (s *Server) Start() {
 
 			//3.2 TODO Server.Start() 设置服务器最大连接控制,如果超过最大连接，那么则关闭此新的连接
 
-			//3.3 TODO Server.Start() 处理该新连接请求的 业务 方法， 此时应该有 handler 和 conn是绑定的
+			//3.3 处理该新连接请求的 业务 方法， 此时应该有 handler 和 conn是绑定的
+			dealConn := NewConnection(conn, cid, CallBackToClient)
+			cid++
 
-			//我们这里暂时做一个最大512字节的回显服务
-			go func() {
-				//不断的循环从客户端获取数据
-				for {
-					buf := make([]byte, 512)
-					cnt, err := conn.Read((buf))
-					if err != nil {
-						fmt.Println("recv buf err ", err)
-						continue
-					}
-					// 回显
-					if _, err := conn.Write(buf[:cnt]); err != nil {
-						fmt.Println("write back buf err ", err)
-						continue
-					}
-				}
-			}()
+			//3.4 启动当前链接的处理业务
+			go dealConn.Start()
 		}
 	}()
 }
