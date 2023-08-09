@@ -25,6 +25,7 @@ func (this *PingRouter) Handle(request ziface.IRequest) {
 	fmt.Println("Call PingRouter Handle ")
 	//使用断言将接口类型转换为特定的结构体，然后访问结构体特有的元素，如果这里不用断言，用不了GetTCPConnection方法
 	//GetConnection()方法返回的是接口类型，可以用断言转换为实现了该接口的结构体Connection
+	//断言为*Connection类型，才可以调用对应结构体的方法
 	_, err := request.GetConnection().(*znet.Connection).GetTCPConnection().Write([]byte("ping ...ping...ping\n"))
 	if err != nil {
 		fmt.Println("call back ping ping ping error! ")
