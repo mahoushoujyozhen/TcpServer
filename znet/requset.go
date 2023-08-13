@@ -2,7 +2,6 @@ package znet
 
 import (
 	"TcpServer/ziface"
-	"TcpServer/znet"
 )
 
 type Request struct {

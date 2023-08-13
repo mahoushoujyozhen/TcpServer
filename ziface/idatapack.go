@@ -9,3 +9,4 @@ type IDataPack interface {
 	Pack(msg IMessage) ([]byte, error) //封包方法
 	Unpack([]byte) (IMessage, error)   //拆包方法
 }
+
