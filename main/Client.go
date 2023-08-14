@@ -10,7 +10,7 @@ import (
 
 /*
 	模拟客户端
- */
+*/
  func main() {
 
 	fmt.Println("Client Test ... start")
