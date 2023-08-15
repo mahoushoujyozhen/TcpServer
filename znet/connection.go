@@ -20,6 +20,8 @@ type Connection struct {
 	MsgHandler ziface.IMsgHandle
 	//告知该连接已经退出/停止的channel
 	ExitBuffChan chan bool
+	//无缓冲通道，用于读，写两个goroutine之间的消息通信  进行读写分离设计
+	msgChan chan []byte
 }
 
 // 创建连接的方法
@@ -28,10 +30,33 @@ func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandl
 		Conn:         conn,
 		ConnID:       connID,
 		isClosed:     false,
-		MsgHandler: msgHandler,
+		MsgHandler:   msgHandler,
 		ExitBuffChan: make(chan bool, 1), //用来通知主进程是否能结束，防止主进程结束然后goroutine意外死亡
+		msgChan:      make(chan []byte),  //msgChan初始化
 	}
 	return c
+}
+
+/*
+	写消息Goroutine，server将用户数据发送给客户端
+*/
+
+func (c *Connection) StartWriter() {
+	fmt.Println("[Writer Goroutine is running]")
+	defer fmt.Println(c.RemoteAddr().String(), "[conn writer exit!]")
+	for {
+		select {
+		case data := <-c.msgChan:
+			//有数据要写给前端
+			if _, err := c.Conn.Write(data); err != nil {
+				fmt.Println("Send Data error: ", err, " Conn Writer exit")
+				return
+			}
+		case <-c.ExitBuffChan:
+			//conn已经关闭
+			return
+		}
+	}
 }
 
 // 处理conn读数据的Goroutine
@@ -76,7 +101,7 @@ func (c *Connection) StartReader() {
 			conn: c,
 			msg:  msg, //将之前的 buf 改为 msg
 		}
-		
+
 		//从绑定好的消息和对应的处理方法中执行对应的Handle方法
 		go c.MsgHandler.DoMsgHandler(&req)
 	}
@@ -84,8 +109,10 @@ func (c *Connection) StartReader() {
 
 // 启动连接，让当前连接开始工作
 func (c *Connection) Start() {
-	//开启处理该连接读取到客户端数据之后到请求业务
+	//开启用户从客户端读取数据流程的Gorouitne
 	go c.StartReader()
+	//开启用于写回客户端数据流程的Goroutine
+	go c.StartWriter()
 
 	//这里阻塞主进程，等待goroutine完成任务，后者发出完成任务的信号，主进程才退出
 	//为了防止主进程退出，然后其中开启的goroutine会直接断开的问题
@@ -132,7 +159,7 @@ func (c *Connection) RemoteAddr() net.Addr {
 	return c.Conn.RemoteAddr()
 }
 
-//直接将Message数据发送数据给远程的TCP客户端
+//直接将Message数据发送到msgChan
 
 func (c *Connection) SendMsg(msgId uint32, data []byte) error {
 	if c.isClosed == true {
@@ -147,10 +174,6 @@ func (c *Connection) SendMsg(msgId uint32, data []byte) error {
 	}
 
 	//写回客户端
-	if _, err := c.Conn.Write(msg); err != nil {
-		fmt.Println("Write msg id ", msgId, " error ")
-		c.ExitBuffChan <- true
-		return errors.New("conn write error")
-	}
+	c.msgChan <- msg //这里写到msgChan促发Write Goroutine将数据写会客户端
 	return nil
 }
