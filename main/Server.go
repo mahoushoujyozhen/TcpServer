@@ -17,7 +17,7 @@ func (this *PingRouter) Handle(request ziface.IRequest) {
 	//先读取客户端的数据，再回写ping...ping...ping
 	fmt.Println("recv from client : msgId=", request.GetMsgId(), ", data=", string(request.GetData()))
 
-	//回写数据
+	//回写数据 这里reqeust利用句柄获取connection，这里如果request多的话，会造成短暂阻塞，所以需要有缓冲的读写channel
 	err := request.GetConnection().SendMsg(0, []byte("ping...ping...ping"))
 	if err != nil {
 		fmt.Println(err)

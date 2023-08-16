@@ -57,10 +57,23 @@ func (c *Connection) StartWriter() {
 	for {
 		select {
 		case data := <-c.msgChan:
-			//有数据要写给前端
+			//有数据要写给前端（无缓冲）
 			if _, err := c.Conn.Write(data); err != nil {
 				fmt.Println("Send Data error: ", err, " Conn Writer exit")
 				return
+			}
+			//针对有缓冲的数据写回处理 ，这个ok返回值是读channel默认自带的
+		case data, ok := <-c.msgBuffChan:
+			if ok {
+				//有数据要写给客户端
+				if _, err := c.Conn.Write(data); err != nil {
+					fmt.Println("Send Buff Data error:", err, " Conn Writer exit")
+					return
+				}
+			} else {
+				//ok为false，说明channel已经关闭了或者没有数据
+				fmt.Println("msgBuffChan is Closed")
+				break
 			}
 		case <-c.ExitBuffChan:
 			//conn已经关闭
@@ -197,5 +210,23 @@ func (c *Connection) SendMsg(msgId uint32, data []byte) error {
 
 	//写回客户端
 	c.msgChan <- msg //这里写到msgChan促发Write Goroutine将数据写会客户端
+	return nil
+}
+
+// 缓冲版SendMsg
+func (c *Connection) SendBuffMsg(msgId uint32, data []byte) error {
+	if c.isClosed == true {
+		return errors.New("Connection closed when send buff msg")
+	}
+	//将data封包，并且发送
+	dp := NewDataPack()
+	msg, err := dp.Pack(NewMsgPackage(msgId, data))
+	if err != nil {
+		fmt.Println("Pack error msg id = ", msgId)
+		return errors.New("Pack error msg")
+	}
+
+	//写回客户端  利用带缓冲的的读写通知channel
+	c.msgBuffChan <- msg
 	return nil
 }
