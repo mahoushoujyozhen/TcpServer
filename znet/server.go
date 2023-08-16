@@ -21,6 +21,8 @@ type Server struct {
 	Port int
 	//当前Server由用户绑定的回调router，也就是Server注册的链接对应的处理业务
 	MsgHandler ziface.IMsgHandle
+	//当前Server的连接管理器
+	ConnMgr ziface.IConnManager
 }
 
 // ============== 定义当前客户端链接的handle api ===========
@@ -38,8 +40,8 @@ func CallBackToClient(conn *net.TCPConn, data []byte, cnt int) error {
 
 // 开启网络服务
 func (s *Server) Start() {
-	fmt.Printf("[START] Server listenner at IP: %s, Port %d, is starting\n", s.IP, s.Port)
-	fmt.Printf("[Zinx] Version: %s, MaxConn: %d,  MaxPacketSize: %d\n",
+	fmt.Printf("[START] Server name: %s,listenner at IP: %s, Port %d is starting\n", s.Name, s.IP, s.Port)
+	fmt.Printf("[Zinx] Version: %s, MaxConn: %d, MaxPacketSize: %d\n",
 		utils.GlobalObject.Version,
 		utils.GlobalObject.MaxConn,
 		utils.GlobalObject.MaxPacketSize)
@@ -47,7 +49,6 @@ func (s *Server) Start() {
 	go func() {
 		//0、启动worker工作池机制
 		s.MsgHandler.StartWorkerPool()
-
 
 		//1 获取一个TCP的Addr
 		addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
@@ -72,7 +73,14 @@ func (s *Server) Start() {
 
 		//3 启动server网络连接业务
 		for {
-			//3.1 阻塞等待客户端建立连接请求
+			/*
+				思考一下，这里其实只有一个server，但是为什么在connection里面需要记录server这个句柄，只有一个server，
+				需要用到server的时候，在这里执行就可以了，有必要定义一个句柄，让connection和server建立起互相索引的关系吗？
+				目前我看着只能起一个server，而不是多个server
+				答：这种设计可以满足多个server或者单个server的情况，通配性更强
+			*/
+
+			//3.1 阻塞等待客户端建立连接请求  这里监听新建的链接，同属于一个server
 			conn, err := listenner.AcceptTCP()
 			if err != nil {
 				fmt.Println("Accept err ", err)
@@ -81,8 +89,14 @@ func (s *Server) Start() {
 
 			//3.2 TODO Server.Start() 设置服务器最大连接控制,如果超过最大连接，那么则关闭此新的连接
 
+			if s.ConnMgr.Len() >= utils.GlobalObject.MaxConn {
+				//如果当前的连接数量已经达到上限，直接拒绝连接
+				conn.Close()
+				continue
+			}
+
 			//3.3 处理该新连接请求的 业务 方法， 此时应该有 handler 和 conn是绑定的
-			dealConn := NewConnection(conn, cid, s.MsgHandler)
+			dealConn := NewConnection(s, conn, cid, s.MsgHandler)
 			cid++
 
 			//3.4 启动当前链接的处理业务
@@ -92,7 +106,10 @@ func (s *Server) Start() {
 }
 func (s *Server) Stop() {
 	fmt.Println("[STOP] Zinx server , name ", s.Name)
-	//TODO  Server.Stop() 将其他需要清理的连接信息或者其他信息 也要一并停止或者清理
+	//  Server.Stop() 将其他需要清理的连接信息或者其他信息 也要一并停止或者清理
+
+	//在server停止的时候，将全部的链接清除
+	s.ConnMgr.ClearConn()
 }
 
 func (s *Server) Serve() {
@@ -111,11 +128,12 @@ func NewServer() ziface.IServer {
 	utils.GlobalObject.Reload()
 	//先初始化全局配置文件
 	s := &Server{
-		Name:      utils.GlobalObject.Name,
-		IPVersion: "tcp4",
-		IP:        utils.GlobalObject.Host,
-		Port:      utils.GlobalObject.TcpPort,
-		MsgHandler: NewMsgHandle(),  //msgHandler初始化
+		Name:       utils.GlobalObject.Name,
+		IPVersion:  "tcp4",
+		IP:         utils.GlobalObject.Host,
+		Port:       utils.GlobalObject.TcpPort,
+		MsgHandler: NewMsgHandle(),   //msgHandler初始化
+		ConnMgr:    NewConnManager(), //创建ConnManager
 	}
 	return s
 }
@@ -124,4 +142,9 @@ func NewServer() ziface.IServer {
 func (s *Server) AddRouter(msgId uint32, router ziface.IRouter) {
 	s.MsgHandler.AddRouter(msgId, router)
 	fmt.Println("Add Router success! msgId = ", msgId)
+}
+
+// 得到连接管理器
+func (s *Server) GetConnMgr() ziface.IConnManager {
+	return s.ConnMgr
 }

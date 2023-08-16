@@ -10,6 +10,8 @@ import (
 )
 
 type Connection struct {
+	//句柄，当前Conn属于哪个Server  ，有时候在conn中，我们需要server.ConnMgr的使用权，所以需要知道属于哪个Server
+	TcpServer ziface.IServer //当前conn属于哪个server，在connection初始化的时候添加即可
 	//当前连接的socket TCP套接字
 	Conn *net.TCPConn
 	//当前连接的ID，也可以成为SessionID，ID全局唯一
@@ -23,18 +25,25 @@ type Connection struct {
 	ExitBuffChan chan bool
 	//无缓冲通道，用于读，写两个goroutine之间的消息通信  进行读写分离设计
 	msgChan chan []byte
+	//有缓冲管道，用于读、写两个goroutine之间的消息通信
+	msgBuffChan chan []byte
 }
 
 // 创建连接的方法
-func NewConnection(conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandle) *Connection {
+func NewConnection(server ziface.IServer, conn *net.TCPConn, connID uint32, msgHandler ziface.IMsgHandle) *Connection {
 	c := &Connection{
+		TcpServer:    server,
 		Conn:         conn,
 		ConnID:       connID,
 		isClosed:     false,
 		MsgHandler:   msgHandler,
 		ExitBuffChan: make(chan bool, 1), //用来通知主进程是否能结束，防止主进程结束然后goroutine意外死亡
 		msgChan:      make(chan []byte),  //msgChan初始化
+		msgBuffChan:  make(chan []byte, utils.GlobalObject.MaxMsgChanLen),
 	}
+	//在创建连接的时候，将conn添加到链接管理中，
+	//这里需要用到ConnMgr，所以体现了TcpServer句柄的作用,这个句柄还可能在其他场景下发挥作用
+	c.TcpServer.GetConnMgr().Add(c) //将当前新建的链接添加到ConnMgr中
 	return c
 }
 
@@ -64,6 +73,7 @@ func (c *Connection) StartWriter() {
 func (c *Connection) StartReader() {
 	fmt.Println("Reader GoRoutine is running")
 	defer fmt.Println(c.Conn.RemoteAddr().String(), " conn reader exit")
+	//注意，这个版本的话不会退出for循环，所以这里的Stop不会执行，需要考虑什么情况下会退出for循环
 	defer c.Stop()
 	for {
 		//创建拆包解包的对象
@@ -133,6 +143,8 @@ func (c *Connection) Start() {
 
 // 停止连接，结束当前连接状态M
 func (c *Connection) Stop() {
+
+	fmt.Println("Conn Stop()...ConnID = ", c.ConnID)
 	//1、如果当前连接已经关闭
 	if c.isClosed == true {
 		return
@@ -143,11 +155,15 @@ func (c *Connection) Stop() {
 	//关闭socket连接
 	c.Conn.Close()
 
-	//通知从缓冲队列读取数据的业务，该连接已经关闭
+	//关闭writer Goroutine
 	c.ExitBuffChan <- true
+
+	//将链接从链接管理器中删除
+	c.TcpServer.GetConnMgr().Remove(c) //从ConnManager中删除conn
 
 	//关闭该连接的所有管道
 	close(c.ExitBuffChan)
+	close(c.msgBuffChan)
 }
 
 // 从当前连接获取原始的socket TCPConn

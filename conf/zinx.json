@@ -6,5 +6,6 @@
     "Version":"V0.4",
     "MaxWorkerTaskLen":1024,
     "WorkerPoolSize":10,
-    "ConfFilePath":"../conf/zinx.json"
+    "ConfFilePath":"../conf/zinx.json",
+    "MaxMsgChanLen" :1024
 }

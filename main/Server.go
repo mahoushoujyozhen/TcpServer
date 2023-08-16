@@ -40,6 +40,9 @@ func (this *HelloZinxRouter) Handle(request ziface.IRequest) {
 }
 
 func main() {
+
+	//这里可以用goroutine开启多个server服务
+
 	//创建一个server句柄
 	s := znet.NewServer()
 
