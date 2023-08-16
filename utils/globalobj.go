@@ -50,6 +50,7 @@ var GlobalObject *GlobalObj
 */
 func (g *GlobalObj) Reload() {
 	//结构体方法中可以用g来访问调用这个方法的实体
+
 	data, err := os.ReadFile("../conf/zinx.json")
 	if err != nil {
 		panic(err)

@@ -1,6 +1,7 @@
 package znet
 
 import (
+	"TcpServer/utils"
 	"TcpServer/ziface"
 	"errors"
 	"fmt"
@@ -102,8 +103,13 @@ func (c *Connection) StartReader() {
 			msg:  msg, //将之前的 buf 改为 msg
 		}
 
-		//从绑定好的消息和对应的处理方法中执行对应的Handle方法
-		go c.MsgHandler.DoMsgHandler(&req)
+		if utils.GlobalObject.WorkerPoolSize > 0 {
+			//已经启动工作池机制，将request发送给工作池处理
+			c.MsgHandler.SendMsgToTaskQueue(&req)
+		} else {
+			//从绑定好的消息和对应的处理方法中执行对应的Handle方法
+			go c.MsgHandler.DoMsgHandler(&req)
+		}
 	}
 }
 
