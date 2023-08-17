@@ -42,6 +42,13 @@ func (this *HelloZinxRouter) Handle(request ziface.IRequest) {
 // 创建连接的时候执行
 func DoConnectionBegin(conn ziface.IConnection) {
 	fmt.Println("DoConnectionBegin is Called ...")
+
+	//===========设置两个链接属性，在创建链接之后
+	fmt.Println("Set conn Name, Home done !")
+	conn.SetProperty("Name", "mahoushoujyo")
+	conn.SetProperty("Age", 18)
+	//================
+
 	err := conn.SendMsg(2, []byte("DoConnection BEGIN..."))
 	if err != nil {
 		fmt.Println(err)
@@ -51,6 +58,16 @@ func DoConnectionBegin(conn ziface.IConnection) {
 //链接断卡ID时候执行
 
 func DoConnectionLost(conn ziface.IConnection) {
+	//===========在链接销毁之前，查询conn的Name，Age属性
+	if name, err := conn.GetProperty("Name"); err == nil {
+		fmt.Println("Conn Property Name = ", name)
+	}
+
+	if age, err := conn.GetProperty("Age"); err == nil {
+		fmt.Println("Conn Property Age = ", age)
+	}
+	//===========
+
 	fmt.Println("DoConnectionLost is Called ...")
 }
 

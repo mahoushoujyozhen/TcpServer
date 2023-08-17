@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 )
 
 type Connection struct {
@@ -27,6 +28,11 @@ type Connection struct {
 	msgChan chan []byte
 	//有缓冲管道，用于读、写两个goroutine之间的消息通信
 	msgBuffChan chan []byte
+
+	//链接属性
+	property map[string]interface{}
+	//保护链接属性修改的锁
+	propertyLock sync.RWMutex
 }
 
 // 创建连接的方法
@@ -40,6 +46,7 @@ func NewConnection(server ziface.IServer, conn *net.TCPConn, connID uint32, msgH
 		ExitBuffChan: make(chan bool, 1), //用来通知主进程是否能结束，防止主进程结束然后goroutine意外死亡
 		msgChan:      make(chan []byte),  //msgChan初始化
 		msgBuffChan:  make(chan []byte, utils.GlobalObject.MaxMsgChanLen),
+		property:     make(map[string]interface{}), //对链接属性初始化
 	}
 	//在创建连接的时候，将conn添加到链接管理中，
 	//这里需要用到ConnMgr，所以体现了TcpServer句柄的作用,这个句柄还可能在其他场景下发挥作用
@@ -236,4 +243,33 @@ func (c *Connection) SendBuffMsg(msgId uint32, data []byte) error {
 	//写回客户端  利用带缓冲的的读写通知channel
 	c.msgBuffChan <- msg
 	return nil
+}
+
+// 设置链接属性
+func (c *Connection) SetProperty(key string, value interface{}) {
+	//增加属性，加锁
+	c.propertyLock.Lock()
+	defer c.propertyLock.Unlock()
+	c.property[key] = value
+}
+
+// 获取链接属性
+func (c *Connection) GetProperty(key string) (interface{}, error) {
+	c.propertyLock.RLock()
+	defer c.propertyLock.RUnlock()
+
+	if value, ok := c.property[key]; ok {
+		return value, nil
+	} else {
+		return nil, errors.New("no property found ")
+	}
+}
+
+//移除链接属性
+
+func (c *Connection) RemoveProperty(key string) {
+	c.propertyLock.Lock()
+	defer c.propertyLock.Unlock()
+
+	delete(c.property, key)
 }
