@@ -97,14 +97,14 @@ func (c *Connection) StartReader() {
 		if _, err := io.ReadFull(c.GetTCPConnection(), headData); err != nil {
 			fmt.Println("read msg head error ", err)
 			c.ExitBuffChan <- true
-			continue
+			return
 		}
 		//拆包，得到msgid 和 dataLen 放在msg中
 		msg, err := dp.Unpack(headData)
 		if err != nil {
 			fmt.Println("unpack err: ", err)
 			c.ExitBuffChan <- true
-			continue
+			return
 		}
 
 		//根据dataLen 读取data，放在msg.Data中
@@ -138,10 +138,14 @@ func (c *Connection) StartReader() {
 
 // 启动连接，让当前连接开始工作
 func (c *Connection) Start() {
+
 	//开启用户从客户端读取数据流程的Gorouitne
 	go c.StartReader()
 	//开启用于写回客户端数据流程的Goroutine
 	go c.StartWriter()
+
+	//在链接开始之前，启用创建连接时需要执行的Hook函数
+	c.TcpServer.CallOnConnStart(c)
 
 	//这里阻塞主进程，等待goroutine完成任务，后者发出完成任务的信号，主进程才退出
 	//为了防止主进程退出，然后其中开启的goroutine会直接断开的问题
@@ -164,6 +168,9 @@ func (c *Connection) Stop() {
 	}
 	c.isClosed = true //设置关闭连接的标识位
 	//TODO Connection Stop() 如果用户注册了该连接的关闭回调业务，那么在此刻应该显式调用
+
+	//如果用户注册了关闭链接时调用的hook函数，在这里调用
+	c.TcpServer.CallOnConnStop(c)
 
 	//关闭socket连接
 	c.Conn.Close()
